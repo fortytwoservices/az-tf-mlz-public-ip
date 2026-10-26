@@ -38,6 +38,37 @@ run "create" {
   }
 }
 
+run "replace_child_under_lock" {
+  # A child replaced without an input change (as with -replace) also needs the lock out of the way: the
+  # documented way is to replace the pause in the same run, which recreates the lock around it.
+  variables {
+    name              = "pip-mlz-it-${run.setup.suffix}"
+    parent_id         = run.setup.resource_group_id
+    location          = run.setup.location
+    domain_name_label = "pip-mlz-it-${run.setup.suffix}"
+    diagnostic_settings = {
+      workspace = {
+        workspace_resource_id = run.setup.workspace_id
+        logs                  = [{ category_group = "allLogs" }]
+        metrics               = [{ category = "AllMetrics" }]
+      }
+    }
+    lock = { kind = "CanNotDelete" }
+    role_assignments = {
+      reader = { role_definition_id_or_name = "Reader", principal_id = run.setup.object_id }
+    }
+  }
+
+  plan_options {
+    replace = [azapi_resource.diagnostic_settings["workspace"], time_sleep.lock_removal[0]]
+  }
+
+  assert {
+    condition     = length(azapi_resource.diagnostic_settings) == 1 && length(azapi_resource.lock) == 1
+    error_message = "The diagnostic setting should be recreated and the lock back."
+  }
+}
+
 run "update_in_place" {
   variables {
     name                    = "pip-mlz-it-${run.setup.suffix}"

@@ -135,4 +135,8 @@ resource "time_sleep" "lock_removal" {
     azapi_resource.diagnostic_settings,
     azapi_resource.role_assignments,
   ]
+
+  # To replace a child without an input change (-replace, a tainted instance), replace this pause in the
+  # same run: `-replace='time_sleep.lock_removal[0]'`. A replace_triggered_by on the children cannot do
+  # it: Terraform fails with "no change found" whenever a collection has no instances.
 }

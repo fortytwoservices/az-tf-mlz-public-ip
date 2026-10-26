@@ -13,7 +13,8 @@ manages a public IP prefix and is called on its own.
   address taken from a prefix (`public_ip_prefix_id`).
 - Lock, role assignments and diagnostic settings, as in Azure Verified Modules. Changing the diagnostic
   settings or role assignments of a locked address removes the lock, makes the change and locks it
-  again, because a lock blocks deleting them. A `ReadOnly` lock also blocks changes to the address
+  again, because a lock blocks deleting them. To force-replace one of them (`-replace`), also replace
+  `time_sleep.lock_removal[0]` in the same run. A `ReadOnly` lock also blocks changes to the address
   itself: set `lock = null`, apply your change, then lock it again.
 - Changing the SKU, zones, IP version, prefix, IP tags or DNS label scope replaces the address, because
   Azure cannot change them in place.
