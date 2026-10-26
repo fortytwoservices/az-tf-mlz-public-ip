@@ -28,12 +28,13 @@ variable "parent_id" {
 
 variable "ddos_protection_mode" {
   type        = string
-  default     = null
-  description = "(Optional) DDoS protection mode: `VirtualNetworkInherited`, `Enabled` or `Disabled`. Azure's default (`VirtualNetworkInherited`) applies when null."
+  default     = "VirtualNetworkInherited"
+  description = "DDoS protection mode: `VirtualNetworkInherited` (Azure's default), `Enabled` or `Disabled`."
+  nullable    = false
 
   validation {
-    condition     = var.ddos_protection_mode == null ? true : contains(["VirtualNetworkInherited", "Enabled", "Disabled"], var.ddos_protection_mode)
-    error_message = "`ddos_protection_mode` must be `VirtualNetworkInherited`, `Enabled`, `Disabled` or null."
+    condition     = contains(["VirtualNetworkInherited", "Enabled", "Disabled"], var.ddos_protection_mode)
+    error_message = "`ddos_protection_mode` must be `VirtualNetworkInherited`, `Enabled` or `Disabled`."
   }
 }
 
@@ -66,7 +67,7 @@ variable "domain_name_label" {
 variable "domain_name_label_scope" {
   type        = string
   default     = null
-  description = "(Optional) Scope in which the hashed domain name label is reused: `TenantReuse`, `SubscriptionReuse`, `ResourceGroupReuse` or `NoReuse`. Requires `domain_name_label`. Changing it replaces the public IP address."
+  description = "(Optional) Scope in which the hashed domain name label is reused: `TenantReuse`, `SubscriptionReuse`, `ResourceGroupReuse` or `NoReuse`. Requires `domain_name_label`. Changing it, including setting or removing it later, replaces the public IP address."
 
   validation {
     condition     = var.domain_name_label_scope == null ? true : contains(["TenantReuse", "SubscriptionReuse", "ResourceGroupReuse", "NoReuse"], var.domain_name_label_scope)
@@ -123,7 +124,12 @@ variable "public_ip_prefix_id" {
 variable "reverse_fqdn" {
   type        = string
   default     = null
-  description = "(Optional) Reverse FQDN: Azure creates a PTR record from the address to this name, which must resolve to the address or to this public IP's FQDN."
+  description = "(Optional) Reverse FQDN: Azure creates a PTR record from the address to this name, which must resolve to the address or to this public IP's FQDN. Requires `domain_name_label`."
+
+  validation {
+    condition     = var.reverse_fqdn == null || var.domain_name_label != null
+    error_message = "`reverse_fqdn` requires `domain_name_label` (Azure needs a label in every dnsSettings section)."
+  }
 }
 
 variable "sku_name" {

@@ -44,8 +44,12 @@ run "defaults" {
     error_message = "Zones and a custom prefix should be left out unless set."
   }
   assert {
-    condition     = toset(azapi_resource.this.replace_triggers_refs) == toset(["sku.tier", "zones", "properties.prefixLength", "properties.publicIPAddressVersion", "properties.customIPPrefix"])
-    error_message = "The properties Azure cannot change in place should replace the prefix, but not the SKU name."
+    condition     = toset(azapi_resource.this.replace_triggers_refs) == toset(["sku.tier", "properties.prefixLength", "properties.publicIPAddressVersion"])
+    error_message = "The always-set properties Azure cannot change in place should replace the prefix, but not the SKU name."
+  }
+  assert {
+    condition     = azapi_resource.this.replace_triggers_external_values.custom_ip_prefix_id == null && azapi_resource.this.replace_triggers_external_values.zones == null
+    error_message = "The nullable properties Azure cannot change in place should be compared as inputs."
   }
   assert {
     condition     = length(azapi_resource.lock) + length(time_sleep.lock_removal) + length(azapi_resource.role_assignments) + length(azapi_resource.diagnostic_settings) == 0
@@ -74,7 +78,7 @@ run "prefix_options" {
     error_message = "sku_name, zones, ip_version and prefix_length should map to the request body."
   }
   assert {
-    condition     = azapi_resource.this.body.properties.customIPPrefix.id == var.custom_ip_prefix_id && azapi_resource.this.tags == tomap({ environment = "test" })
+    condition     = azapi_resource.this.body.properties.customIPPrefix.id == var.custom_ip_prefix_id && azapi_resource.this.tags == tomap({ environment = "test" }) && azapi_resource.this.replace_triggers_external_values.custom_ip_prefix_id == var.custom_ip_prefix_id && azapi_resource.this.replace_triggers_external_values.zones == tolist(["1", "2", "3"])
     error_message = "custom_ip_prefix_id and tags should be set."
   }
 }
@@ -101,7 +105,7 @@ run "interfaces" {
   }
 
   assert {
-    condition     = azapi_resource.lock[0].parent_id == azapi_resource.this.id && time_sleep.lock_removal[0].triggers.public_ip_prefix_id == azapi_resource.this.id
+    condition     = azapi_resource.lock[0].parent_id == azapi_resource.this.id && time_sleep.lock_removal[0].triggers.public_ip_prefix_id == azapi_resource.this.id && time_sleep.lock_removal[0].triggers.children == sha256(jsonencode([var.diagnostic_settings, var.role_assignments]))
     error_message = "The lock should be placed on the prefix, with a pause replaced with the prefix."
   }
   assert {

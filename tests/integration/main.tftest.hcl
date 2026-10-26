@@ -1,6 +1,7 @@
 # Real Azure, no mocks: ARM_SUBSCRIPTION_ID=<test subscription> scripts/integration.sh .
-# Proves what mocks cannot: the default API version and body are accepted, an in-place update keeps the
-# address, a zone change replaces it (with a lock in place), and everything is destroyed cleanly.
+# Proves what mocks cannot: the default API version and body (explicit nulls included) are accepted, an
+# in-place update keeps the address, cleared settings are cleared in Azure, children can be removed while
+# the address stays locked, zone changes in both directions replace it, and everything is destroyed.
 
 run "setup" {
   module {
@@ -64,6 +65,28 @@ run "update_in_place" {
   }
 }
 
+run "clear_settings_and_remove_children_under_lock" {
+  # The DNS label is cleared (sent as null, not left out) and the diagnostic setting and role assignment
+  # are deleted while the lock stays configured: the lock is removed and created again around them.
+  variables {
+    name                    = "pip-mlz-it-${run.setup.suffix}"
+    parent_id               = run.setup.resource_group_id
+    location                = run.setup.location
+    idle_timeout_in_minutes = 10
+    lock                    = { kind = "CanNotDelete" }
+    tags                    = { updated = "true" }
+  }
+
+  assert {
+    condition     = output.fqdn == null && output.ip_address == run.create.ip_address
+    error_message = "The DNS label should be removed in Azure, with the address kept."
+  }
+  assert {
+    condition     = length(azapi_resource.diagnostic_settings) + length(azapi_resource.role_assignments) == 0 && length(azapi_resource.lock) == 1
+    error_message = "The diagnostic setting and role assignment should be gone, and the lock back."
+  }
+}
+
 run "zonal_replaces_the_address" {
   # Azure cannot change the zones of an address; without the replace trigger this apply would fail.
   variables {
@@ -77,5 +100,30 @@ run "zonal_replaces_the_address" {
   assert {
     condition     = azapi_resource.this.body.zones == tolist(["1"]) && output.fqdn == null
     error_message = "The address should be recreated in zone 1, without the DNS label."
+  }
+}
+
+run "default_zones_replace_the_address" {
+  # Setting zones back to null drops them from the body; the replacement input still sees the change.
+  variables {
+    name      = "pip-mlz-it-${run.setup.suffix}"
+    parent_id = run.setup.resource_group_id
+    location  = run.setup.location
+    lock      = { kind = "CanNotDelete" }
+  }
+}
+
+run "zones_read_back" {
+  module {
+    source = "./tests/integration/read"
+  }
+
+  variables {
+    public_ip_address_id = run.default_zones_replace_the_address.resource_id
+  }
+
+  assert {
+    condition     = try(output.zones, null) != tolist(["1"])
+    error_message = "The address should no longer be zonal (zone 1) after zones were set back to null."
   }
 }

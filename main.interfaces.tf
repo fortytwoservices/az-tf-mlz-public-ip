@@ -29,8 +29,11 @@ resource "azapi_resource" "diagnostic_settings" {
     "properties.logs"    = "category,categoryGroup"
     "properties.metrics" = "category"
   }
-  response_export_values = []
-  retry                  = var.retry
+  # A removed destination (a null that ignore_null_property drops) or a removed log category (an ignored
+  # extra item) would not reach Azure, so any change recreates the setting.
+  replace_triggers_external_values = var.diagnostic_settings[each.key]
+  response_export_values           = []
+  retry                            = var.retry
 
   dynamic "timeouts" {
     for_each = var.timeouts == null ? [] : [var.timeouts]
@@ -104,17 +107,24 @@ resource "azapi_resource" "lock" {
 
   # Created last and removed first: a lock also blocks writes to the resources under the address.
   depends_on = [time_sleep.lock_removal]
+
+  lifecycle {
+    replace_triggered_by = [time_sleep.lock_removal[count.index]]
+  }
 }
 
 # Azure keeps enforcing a deleted lock for a few seconds. Destroyed after the lock and before everything
-# else, this pause lets the deletion propagate first. The trigger replaces it with the address, so the
-# pause also runs when a locked address is replaced.
+# else, this pause lets the deletion propagate first. Its triggers replace it, and through
+# replace_triggered_by the lock, whenever the address is replaced or its diagnostic settings or role
+# assignments change: a lock also blocks deleting those (ScopeLocked). The order is then lock removed,
+# pause, changes, lock created again.
 resource "time_sleep" "lock_removal" {
   count = var.lock != null ? 1 : 0
 
   destroy_duration = "30s"
   triggers = {
     public_ip_address_id = azapi_resource.this.id
+    children             = sha256(jsonencode([var.diagnostic_settings, var.role_assignments]))
   }
 
   depends_on = [

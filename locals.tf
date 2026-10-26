@@ -1,15 +1,4 @@
 locals {
-  ddos_settings = merge(
-    var.ddos_protection_mode == null ? {} : { protectionMode = var.ddos_protection_mode },
-    var.ddos_protection_plan_id == null ? {} : { ddosProtectionPlan = { id = var.ddos_protection_plan_id } },
-  )
-  dns_settings = {
-    for key, value in {
-      domainNameLabel      = var.domain_name_label
-      domainNameLabelScope = var.domain_name_label_scope
-      reverseFqdn          = var.reverse_fqdn
-    } : key => value if value != null
-  }
   role_assignments = {
     for key, assignment in var.role_assignments : key => merge(assignment, {
       # With principalType set, ARM does not fail with PrincipalNotFound while a new service principal is
@@ -22,4 +11,5 @@ locals {
     })
   }
   subscription_id = provider::azapi::parse_resource_id("Microsoft.Resources/resourceGroups", var.parent_id).subscription_id
+  zones           = var.zones == null ? null : sort(distinct(var.zones))
 }

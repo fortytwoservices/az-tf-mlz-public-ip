@@ -56,12 +56,24 @@ run "defaults" {
     error_message = "No IP tags should be sent by default."
   }
   assert {
-    condition     = !contains(keys(azapi_resource.this.body), "zones") && length(setintersection(keys(azapi_resource.this.body.properties), ["dnsSettings", "ddosSettings", "publicIPPrefix"])) == 0
-    error_message = "Zones, DNS settings, DDoS settings and a prefix should be left out unless set, so Azure's defaults apply."
+    condition     = !contains(keys(azapi_resource.this.body), "zones")
+    error_message = "Zones should be left out unless set, so Azure's zone default is not compared."
   }
   assert {
-    condition     = toset(azapi_resource.this.replace_triggers_refs) == toset(["sku", "zones", "properties.publicIPAddressVersion", "properties.publicIPPrefix", "properties.ipTags", "properties.dnsSettings.domainNameLabelScope"])
-    error_message = "The properties Azure cannot change in place should replace the address."
+    condition     = alltrue([for key in ["dnsSettings", "publicIPPrefix"] : contains(keys(azapi_resource.this.body.properties), key) && azapi_resource.this.body.properties[key] == null])
+    error_message = "Without a label and a prefix, dnsSettings and publicIPPrefix should be sent as null, so that removing them later clears them."
+  }
+  assert {
+    condition     = azapi_resource.this.body.properties.ddosSettings.protectionMode == "VirtualNetworkInherited" && azapi_resource.this.body.properties.ddosSettings.ddosProtectionPlan == null
+    error_message = "The DDoS settings should default to Azure's VirtualNetworkInherited mode, sent explicitly."
+  }
+  assert {
+    condition     = toset(azapi_resource.this.replace_triggers_refs) == toset(["sku", "properties.publicIPAddressVersion", "properties.ipTags"])
+    error_message = "The always-set properties Azure cannot change in place should replace the address."
+  }
+  assert {
+    condition     = azapi_resource.this.replace_triggers_external_values.domain_name_label_scope == null && azapi_resource.this.replace_triggers_external_values.public_ip_prefix_id == null && azapi_resource.this.replace_triggers_external_values.zones == null
+    error_message = "The nullable properties Azure cannot change in place should be compared as inputs."
   }
   assert {
     condition     = azapi_resource.this.retry == null && azapi_resource.this.timeouts == null && length(coalesce(azapi_resource.this.tags, {})) == 0
@@ -110,8 +122,12 @@ run "address_options" {
     error_message = "public_ip_prefix_id should map to properties.publicIPPrefix."
   }
   assert {
-    condition     = azapi_resource.this.body.properties.dnsSettings == { domainNameLabel = "pip-test", domainNameLabelScope = "TenantReuse", reverseFqdn = "www.example.com." }
+    condition     = azapi_resource.this.body.properties.dnsSettings.domainNameLabel == "pip-test" && azapi_resource.this.body.properties.dnsSettings.domainNameLabelScope == "TenantReuse" && azapi_resource.this.body.properties.dnsSettings.reverseFqdn == "www.example.com."
     error_message = "The DNS inputs should map to properties.dnsSettings."
+  }
+  assert {
+    condition     = azapi_resource.this.replace_triggers_external_values.domain_name_label_scope == "TenantReuse" && azapi_resource.this.replace_triggers_external_values.public_ip_prefix_id == var.public_ip_prefix_id && azapi_resource.this.replace_triggers_external_values.zones == tolist(["1", "2", "3"])
+    error_message = "The replacement inputs should hold the sorted zones, the prefix and the label scope."
   }
   assert {
     condition     = output.fqdn == "pip-test.norwayeast.cloudapp.azure.com" && azapi_resource.this.tags == tomap({ environment = "test" })
@@ -127,8 +143,8 @@ run "dns_label_only" {
   }
 
   assert {
-    condition     = azapi_resource.this.body.properties.dnsSettings == { domainNameLabel = "pip-test" }
-    error_message = "Unset DNS inputs should be left out of properties.dnsSettings."
+    condition     = azapi_resource.this.body.properties.dnsSettings.domainNameLabel == "pip-test" && azapi_resource.this.body.properties.dnsSettings.domainNameLabelScope == null && azapi_resource.this.body.properties.dnsSettings.reverseFqdn == null
+    error_message = "Unset DNS inputs should be sent as nulls in properties.dnsSettings."
   }
 }
 
@@ -191,6 +207,14 @@ run "interfaces" {
   assert {
     condition     = azapi_resource.role_assignments["tenant_level_id"].body.properties.roleDefinitionId == "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7" && azapi_resource.role_assignments["tenant_level_id"].body.properties.principalType == "ServicePrincipal"
     error_message = "A tenant-level role definition ID should be qualified with the subscription, and the skip flag should set principalType."
+  }
+  assert {
+    condition     = time_sleep.lock_removal[0].triggers.children == sha256(jsonencode([var.diagnostic_settings, var.role_assignments]))
+    error_message = "A change to the diagnostic settings or role assignments should replace the pause, and with it the lock."
+  }
+  assert {
+    condition     = azapi_resource.diagnostic_settings["workspace"].replace_triggers_external_values.workspace_resource_id == var.diagnostic_settings["workspace"].workspace_resource_id
+    error_message = "Any change to a diagnostic setting's inputs should recreate it."
   }
   assert {
     condition     = azapi_resource.diagnostic_settings["workspace"].name == "diag-workspace" && azapi_resource.diagnostic_settings["named"].name == "diag-custom"
@@ -351,6 +375,16 @@ run "scope_without_label" {
   }
 
   expect_failures = [var.domain_name_label_scope]
+}
+
+run "reverse_fqdn_without_label" {
+  command = plan
+
+  variables {
+    reverse_fqdn = "www.example.com."
+  }
+
+  expect_failures = [var.reverse_fqdn]
 }
 
 run "ddos_plan_without_enabled_mode" {

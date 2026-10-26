@@ -77,11 +77,11 @@ The following input variables are optional (have default values):
 
 ### <a name="input_ddos_protection_mode"></a> [ddos\_protection\_mode](#input\_ddos\_protection\_mode)
 
-Description: (Optional) DDoS protection mode: `VirtualNetworkInherited`, `Enabled` or `Disabled`. Azure's default (`VirtualNetworkInherited`) applies when null.
+Description: DDoS protection mode: `VirtualNetworkInherited` (Azure's default), `Enabled` or `Disabled`.
 
 Type: `string`
 
-Default: `null`
+Default: `"VirtualNetworkInherited"`
 
 ### <a name="input_ddos_protection_plan_id"></a> [ddos\_protection\_plan\_id](#input\_ddos\_protection\_plan\_id)
 
@@ -157,7 +157,7 @@ Default: `null`
 
 ### <a name="input_domain_name_label_scope"></a> [domain\_name\_label\_scope](#input\_domain\_name\_label\_scope)
 
-Description: (Optional) Scope in which the hashed domain name label is reused: `TenantReuse`, `SubscriptionReuse`, `ResourceGroupReuse` or `NoReuse`. Requires `domain_name_label`. Changing it replaces the public IP address.
+Description: (Optional) Scope in which the hashed domain name label is reused: `TenantReuse`, `SubscriptionReuse`, `ResourceGroupReuse` or `NoReuse`. Requires `domain_name_label`. Changing it, including setting or removing it later, replaces the public IP address.
 
 Type: `string`
 
@@ -285,7 +285,7 @@ Default: `null`
 
 ### <a name="input_reverse_fqdn"></a> [reverse\_fqdn](#input\_reverse\_fqdn)
 
-Description: (Optional) Reverse FQDN: Azure creates a PTR record from the address to this name, which must resolve to the address or to this public IP's FQDN.
+Description: (Optional) Reverse FQDN: Azure creates a PTR record from the address to this name, which must resolve to the address or to this public IP's FQDN. Requires `domain_name_label`.
 
 Type: `string`
 

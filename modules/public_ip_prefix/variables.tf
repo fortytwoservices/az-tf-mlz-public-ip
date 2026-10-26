@@ -42,7 +42,7 @@ variable "prefix_length" {
 variable "custom_ip_prefix_id" {
   type        = string
   default     = null
-  description = "(Optional) Resource ID of the custom IP prefix (your own range, BYOIP) to take the prefix from. Changing it replaces the prefix."
+  description = "(Optional) Resource ID of the custom IP prefix (your own range, BYOIP) to take the prefix from. Changing, setting or removing it replaces the prefix."
 
   validation {
     condition     = var.custom_ip_prefix_id == null ? true : can(provider::azapi::parse_resource_id("Microsoft.Network/customIPPrefixes", var.custom_ip_prefix_id))

@@ -65,7 +65,7 @@ The following input variables are optional (have default values):
 
 ### <a name="input_custom_ip_prefix_id"></a> [custom\_ip\_prefix\_id](#input\_custom\_ip\_prefix\_id)
 
-Description: (Optional) Resource ID of the custom IP prefix (your own range, BYOIP) to take the prefix from. Changing it replaces the prefix.
+Description: (Optional) Resource ID of the custom IP prefix (your own range, BYOIP) to take the prefix from. Changing, setting or removing it replaces the prefix.
 
 Type: `string`
 

@@ -17,18 +17,22 @@ resource "azapi_resource" "this" {
         var.custom_ip_prefix_id == null ? {} : { customIPPrefix = { id = var.custom_ip_prefix_id } },
       )
     },
-    # Sorted, so listing the same zones in another order does not trigger a replacement.
-    var.zones == null ? {} : { zones = sort(distinct(var.zones)) },
+    # Left out when null, so the zones Azure picks are not compared with the configuration. Sorted, so
+    # listing the same zones in another order changes nothing.
+    var.zones == null ? {} : { zones = local.zones },
   )
   ignore_body_changes = length(var.ignore_body_changes.network_public_ip_prefixes) > 0 ? var.ignore_body_changes.network_public_ip_prefixes : null
   # Properties Azure cannot change on an existing prefix (the ones azurerm marks ForceNew); the SKU name
-  # is updated in place.
+  # is updated in place. The nullable ones are compared as inputs rather than body paths, so that setting
+  # them back to null also replaces the prefix: azapi's ignore_no_op_changes ignores a removed body path.
+  replace_triggers_external_values = {
+    custom_ip_prefix_id = var.custom_ip_prefix_id
+    zones               = local.zones
+  }
   replace_triggers_refs = [
     "sku.tier",
-    "zones",
     "properties.prefixLength",
     "properties.publicIPAddressVersion",
-    "properties.customIPPrefix",
   ]
   response_export_values = ["properties.ipPrefix"]
   retry                  = var.retry
