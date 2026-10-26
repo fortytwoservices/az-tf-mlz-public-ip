@@ -82,7 +82,7 @@ run "address_options" {
 
   variables {
     sku_name                = "StandardV2"
-    zones                   = ["1", "2", "3"]
+    zones                   = ["3", "1", "2", "1"]
     ip_version              = "IPv6"
     idle_timeout_in_minutes = 30
     ip_tags                 = { RoutingPreference = "Internet" }

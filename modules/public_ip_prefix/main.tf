@@ -17,7 +17,8 @@ resource "azapi_resource" "this" {
         var.custom_ip_prefix_id == null ? {} : { customIPPrefix = { id = var.custom_ip_prefix_id } },
       )
     },
-    var.zones == null ? {} : { zones = var.zones },
+    # Sorted, so listing the same zones in another order does not trigger a replacement.
+    var.zones == null ? {} : { zones = sort(distinct(var.zones)) },
   )
   ignore_body_changes = length(var.ignore_body_changes.network_public_ip_prefixes) > 0 ? var.ignore_body_changes.network_public_ip_prefixes : null
   # Properties Azure cannot change on an existing prefix (the ones azurerm marks ForceNew); the SKU name

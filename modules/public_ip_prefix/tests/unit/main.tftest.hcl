@@ -62,7 +62,7 @@ run "prefix_options" {
 
   variables {
     sku_name            = "StandardV2"
-    zones               = ["1", "2", "3"]
+    zones               = ["3", "1", "2", "1"]
     ip_version          = "IPv6"
     prefix_length       = 124
     custom_ip_prefix_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/customIPPrefixes/cip-test"
