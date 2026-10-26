@@ -1,4 +1,4 @@
-# Reads federated identity credentials straight from Azure; fails if one is gone.
+# Reads a public IP address's zones straight from Azure.
 terraform {
   required_providers {
     azapi = {
@@ -8,18 +8,16 @@ terraform {
   }
 }
 
-variable "credential_ids" {
-  type = map(string)
+variable "public_ip_address_id" {
+  type = string
 }
 
-data "azapi_resource" "credential" {
-  for_each = var.credential_ids
-
-  type                   = "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2024-11-30"
-  resource_id            = each.value
-  response_export_values = ["properties.subject"]
+data "azapi_resource" "public_ip_address" {
+  type                   = "Microsoft.Network/publicIPAddresses@2025-07-01"
+  resource_id            = var.public_ip_address_id
+  response_export_values = ["zones"]
 }
 
-output "subjects" {
-  value = { for name, credential in data.azapi_resource.credential : name => credential.output.properties.subject }
+output "zones" {
+  value = try(data.azapi_resource.public_ip_address.output.zones, null)
 }

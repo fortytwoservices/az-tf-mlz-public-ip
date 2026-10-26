@@ -1,6 +1,7 @@
-# Real Azure, no mocks: ARM_SUBSCRIPTION_ID=<test subscription> terraform test -test-directory=tests/integration
-# Proves what mocks cannot: credentials written in parallel are serialised, survive an update of the
-# identity, and the lock is removed before everything else on destroy.
+# Real Azure, no mocks: ARM_SUBSCRIPTION_ID=<test subscription> scripts/integration.sh .
+# Proves what mocks cannot: the default API version and body (explicit nulls included) are accepted, an
+# in-place update keeps the address, cleared settings are cleared in Azure, children can be removed while
+# the address stays locked, zone changes in both directions replace it, and everything is destroyed.
 
 run "setup" {
   module {
@@ -10,13 +11,16 @@ run "setup" {
 
 run "create" {
   variables {
-    name      = "id-mlz-it-${run.setup.suffix}"
-    parent_id = run.setup.resource_group_id
-    location  = run.setup.location
-    federated_identity_credentials = {
-      one   = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:one" }
-      two   = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:two" }
-      three = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:three" }
+    name              = "pip-mlz-it-${run.setup.suffix}"
+    parent_id         = run.setup.resource_group_id
+    location          = run.setup.location
+    domain_name_label = "pip-mlz-it-${run.setup.suffix}"
+    diagnostic_settings = {
+      workspace = {
+        workspace_resource_id = run.setup.workspace_id
+        logs                  = [{ category_group = "allLogs" }]
+        metrics               = [{ category = "AllMetrics" }]
+      }
     }
     lock = { kind = "CanNotDelete" }
     role_assignments = {
@@ -25,68 +29,132 @@ run "create" {
   }
 
   assert {
-    condition     = length(output.federated_identity_credential_resource_ids) == 3
-    error_message = "All three credentials should be created."
+    condition     = can(cidrhost("${output.ip_address}/32", 0))
+    error_message = "An IPv4 address should be read back from Azure."
   }
   assert {
-    condition     = can(regex("^[0-9a-f-]{36}$", output.principal_id)) && can(regex("^[0-9a-f-]{36}$", output.client_id))
-    error_message = "principal_id and client_id should be read back from Azure."
+    condition     = output.fqdn == "pip-mlz-it-${run.setup.suffix}.norwayeast.cloudapp.azure.com"
+    error_message = "The FQDN should be built from the DNS label and the region."
   }
 }
 
-run "update_identity" {
+run "replace_child_under_lock" {
+  # A child replaced without an input change (as with -replace) also needs the lock out of the way: the
+  # documented way is to replace the pause in the same run, which recreates the lock around it.
   variables {
-    name      = "id-mlz-it-${run.setup.suffix}"
-    parent_id = run.setup.resource_group_id
-    location  = run.setup.location
-    federated_identity_credentials = {
-      one   = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:one" }
-      two   = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:two" }
-      three = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:three" }
+    name              = "pip-mlz-it-${run.setup.suffix}"
+    parent_id         = run.setup.resource_group_id
+    location          = run.setup.location
+    domain_name_label = "pip-mlz-it-${run.setup.suffix}"
+    diagnostic_settings = {
+      workspace = {
+        workspace_resource_id = run.setup.workspace_id
+        logs                  = [{ category_group = "allLogs" }]
+        metrics               = [{ category = "AllMetrics" }]
+      }
     }
     lock = { kind = "CanNotDelete" }
     role_assignments = {
       reader = { role_definition_id_or_name = "Reader", principal_id = run.setup.object_id }
     }
-    tags = { updated = "true" } # a PUT of the identity without its credentials
+  }
+
+  plan_options {
+    replace = [azapi_resource.diagnostic_settings["workspace"], time_sleep.lock_removal[0]]
   }
 
   assert {
-    condition     = azapi_resource.this.tags == tomap({ updated = "true" })
-    error_message = "The identity should be updated in place."
+    condition     = length(azapi_resource.diagnostic_settings) == 1 && length(azapi_resource.lock) == 1
+    error_message = "The diagnostic setting should be recreated and the lock back."
   }
 }
 
-run "credentials_survive" {
+run "update_in_place" {
+  variables {
+    name                    = "pip-mlz-it-${run.setup.suffix}"
+    parent_id               = run.setup.resource_group_id
+    location                = run.setup.location
+    domain_name_label       = "pip-mlz-it-${run.setup.suffix}"
+    idle_timeout_in_minutes = 10
+    diagnostic_settings = {
+      workspace = {
+        workspace_resource_id = run.setup.workspace_id
+        logs                  = [{ category_group = "allLogs" }]
+        metrics               = [{ category = "AllMetrics" }]
+      }
+    }
+    lock = { kind = "CanNotDelete" }
+    role_assignments = {
+      reader = { role_definition_id_or_name = "Reader", principal_id = run.setup.object_id }
+    }
+    tags = { updated = "true" }
+  }
+
+  assert {
+    condition     = output.ip_address == run.create.ip_address
+    error_message = "An idle timeout and tag change should update the address in place and keep it."
+  }
+}
+
+run "clear_settings_and_remove_children_under_lock" {
+  # The DNS label is cleared (sent as null, not left out) and the diagnostic setting and role assignment
+  # are deleted while the lock stays configured: the lock is removed and created again around them.
+  variables {
+    name                    = "pip-mlz-it-${run.setup.suffix}"
+    parent_id               = run.setup.resource_group_id
+    location                = run.setup.location
+    idle_timeout_in_minutes = 10
+    lock                    = { kind = "CanNotDelete" }
+    tags                    = { updated = "true" }
+  }
+
+  assert {
+    condition     = output.fqdn == null && output.ip_address == run.create.ip_address
+    error_message = "The DNS label should be removed in Azure, with the address kept."
+  }
+  assert {
+    condition     = length(azapi_resource.diagnostic_settings) + length(azapi_resource.role_assignments) == 0 && length(azapi_resource.lock) == 1
+    error_message = "The diagnostic setting and role assignment should be gone, and the lock back."
+  }
+}
+
+run "zonal_replaces_the_address" {
+  # Azure cannot change the zones of an address; without the replace trigger this apply would fail.
+  variables {
+    name      = "pip-mlz-it-${run.setup.suffix}"
+    parent_id = run.setup.resource_group_id
+    location  = run.setup.location
+    zones     = ["1"]
+    lock      = { kind = "CanNotDelete" }
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.zones == tolist(["1"]) && output.fqdn == null
+    error_message = "The address should be recreated in zone 1, without the DNS label."
+  }
+}
+
+run "default_zones_replace_the_address" {
+  # Setting zones back to null drops them from the body; the replacement input still sees the change.
+  variables {
+    name      = "pip-mlz-it-${run.setup.suffix}"
+    parent_id = run.setup.resource_group_id
+    location  = run.setup.location
+    lock      = { kind = "CanNotDelete" }
+  }
+}
+
+run "zones_read_back" {
   module {
     source = "./tests/integration/read"
   }
 
   variables {
-    credential_ids = run.update_identity.federated_identity_credential_resource_ids
+    public_ip_address_id = run.default_zones_replace_the_address.resource_id
   }
 
   assert {
-    condition     = output.subjects.two == "repo:example-org/example-repo:environment:two" && length(output.subjects) == 3
-    error_message = "The credentials should still exist after the identity was updated."
-  }
-}
-
-run "replace_locked_identity" {
-  # A new name replaces the identity. The lock goes first and the pause is replaced with the identity,
-  # so the old identity is deleted only after the lock deletion has propagated.
-  variables {
-    name      = "id-mlz-it-${run.setup.suffix}-renamed"
-    parent_id = run.setup.resource_group_id
-    location  = run.setup.location
-    federated_identity_credentials = {
-      one = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:one" }
-    }
-    lock = { kind = "CanNotDelete" }
-  }
-
-  assert {
-    condition     = output.name == "id-mlz-it-${run.setup.suffix}-renamed" && azapi_resource.lock[0].parent_id == output.resource_id
-    error_message = "The identity should be replaced and locked again."
+    condition     = try(output.zones, null) != tolist(["1"])
+    error_message = "The address should no longer be zonal (zone 1) after zones were set back to null."
   }
 }

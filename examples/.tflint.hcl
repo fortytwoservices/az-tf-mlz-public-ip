@@ -47,3 +47,7 @@ rule "avm_interface_retry" {
 rule "avm_interface_timeouts" {
   enabled = false
 }
+
+rule "avm_output_resource_id_required" {
+  enabled = false # an example's outputs are whatever it demonstrates
+}

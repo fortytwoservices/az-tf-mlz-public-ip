@@ -1,12 +1,11 @@
 mock_provider "azapi" {
   mock_resource "azapi_resource" {
     defaults = {
-      id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-test"
+      id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-test"
       output = {
         properties = {
-          clientId    = "22222222-2222-2222-2222-222222222222"
-          principalId = "33333333-3333-3333-3333-333333333333"
-          tenantId    = "44444444-4444-4444-4444-444444444444"
+          ipAddress   = "203.0.113.10"
+          dnsSettings = { fqdn = "pip-test.norwayeast.cloudapp.azure.com" }
         }
       }
     }
@@ -29,7 +28,7 @@ mock_provider "time" {}
 
 variables {
   location  = "norwayeast"
-  name      = "id-test"
+  name      = "pip-test"
   parent_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test"
 }
 
@@ -37,140 +36,148 @@ run "defaults" {
   command = apply
 
   assert {
-    condition     = azapi_resource.this.type == "Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30"
-    error_message = "The identity should use the default resource type."
+    condition     = azapi_resource.this.type == "Microsoft.Network/publicIPAddresses@2025-07-01"
+    error_message = "The public IP address should use the default resource type."
   }
   assert {
     condition     = azapi_resource.this.name == var.name && azapi_resource.this.parent_id == var.parent_id && azapi_resource.this.location == var.location
-    error_message = "The identity should be created with name, parent_id and location."
+    error_message = "The public IP address should be created with name, parent_id and location."
   }
   assert {
-    condition     = azapi_resource.this.body == {}
-    error_message = "An unset isolation_scope should leave properties out of the request."
+    condition     = azapi_resource.this.body.sku.name == "Standard" && azapi_resource.this.body.sku.tier == "Regional"
+    error_message = "The default SKU should be Standard, Regional."
   }
   assert {
-    condition     = azapi_resource.this.retry == null
-    error_message = "retry should be unset by default."
+    condition     = azapi_resource.this.body.properties.publicIPAllocationMethod == "Static" && azapi_resource.this.body.properties.publicIPAddressVersion == "IPv4" && azapi_resource.this.body.properties.idleTimeoutInMinutes == 4
+    error_message = "The defaults should be a static IPv4 address with a 4-minute idle timeout."
   }
   assert {
-    condition     = azapi_resource.this.timeouts == null
-    error_message = "timeouts should be unset by default."
+    condition     = length(azapi_resource.this.body.properties.ipTags) == 0
+    error_message = "No IP tags should be sent by default."
   }
   assert {
-    condition     = length(coalesce(azapi_resource.this.tags, {})) == 0 # computed: the mock returns {}
-    error_message = "tags should be unset by default."
+    condition     = !contains(keys(azapi_resource.this.body), "zones")
+    error_message = "Zones should be left out unless set, so Azure's zone default is not compared."
   }
   assert {
-    condition     = length(azapi_resource.lock) + length(time_sleep.lock_removal) + length(azapi_resource.role_assignments) + length(module.federated_identity_credential) == 0
-    error_message = "No lock, role assignment or credential should be created by default."
+    condition     = alltrue([for key in ["dnsSettings", "publicIPPrefix"] : contains(keys(azapi_resource.this.body.properties), key) && azapi_resource.this.body.properties[key] == null])
+    error_message = "Without a label and a prefix, dnsSettings and publicIPPrefix should be sent as null, so that removing them later clears them."
   }
   assert {
-    condition     = output.resource_id == azapi_resource.this.id && output.name == var.name
-    error_message = "resource_id and name should come from the identity."
+    condition     = azapi_resource.this.body.properties.ddosSettings.protectionMode == "VirtualNetworkInherited" && azapi_resource.this.body.properties.ddosSettings.ddosProtectionPlan == null
+    error_message = "The DDoS settings should default to Azure's VirtualNetworkInherited mode, sent explicitly."
   }
   assert {
-    condition     = output.principal_id == "33333333-3333-3333-3333-333333333333" && output.client_id == "22222222-2222-2222-2222-222222222222" && output.tenant_id == "44444444-4444-4444-4444-444444444444"
-    error_message = "principal_id, client_id and tenant_id should come from the identity's exported properties."
+    condition     = toset(azapi_resource.this.replace_triggers_refs) == toset(["sku", "properties.publicIPAddressVersion", "properties.ipTags"])
+    error_message = "The always-set properties Azure cannot change in place should replace the address."
   }
   assert {
-    condition     = length(output.federated_identity_credential_resource_ids) == 0
-    error_message = "No credential IDs should be output by default."
+    condition     = azapi_resource.this.replace_triggers_external_values.domain_name_label_scope == null && azapi_resource.this.replace_triggers_external_values.public_ip_prefix_id == null && azapi_resource.this.replace_triggers_external_values.zones == null
+    error_message = "The nullable properties Azure cannot change in place should be compared as inputs."
+  }
+  assert {
+    condition     = azapi_resource.this.retry == null && azapi_resource.this.timeouts == null && length(coalesce(azapi_resource.this.tags, {})) == 0
+    error_message = "retry, timeouts and tags should be unset by default."
+  }
+  assert {
+    condition     = length(azapi_resource.lock) + length(time_sleep.lock_removal) + length(azapi_resource.role_assignments) + length(azapi_resource.diagnostic_settings) == 0
+    error_message = "No lock, role assignment or diagnostic setting should be created by default."
+  }
+  assert {
+    condition     = output.resource_id == azapi_resource.this.id && output.name == var.name && output.ip_address == "203.0.113.10"
+    error_message = "resource_id, name and ip_address should come from the public IP address."
   }
 }
 
-run "identity_options" {
+run "address_options" {
   command = apply
 
   variables {
-    isolation_scope = "Regional"
-    tags            = { environment = "test" }
+    zones                   = ["3", "1", "2", "1"]
+    idle_timeout_in_minutes = 30
+    ip_tags                 = { RoutingPreference = "Internet" }
+    public_ip_prefix_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPPrefixes/ippre-test"
+    domain_name_label       = "pip-test"
+    domain_name_label_scope = "TenantReuse"
+    reverse_fqdn            = "www.example.com."
+    tags                    = { environment = "test" }
   }
 
   assert {
-    condition     = azapi_resource.this.body.properties.isolationScope == "Regional"
-    error_message = "isolation_scope should map to properties.isolationScope."
+    condition     = azapi_resource.this.body.zones == tolist(["1", "2", "3"]) && azapi_resource.this.body.properties.idleTimeoutInMinutes == 30
+    error_message = "zones (sorted, de-duplicated) and idle_timeout_in_minutes should map to the request body."
   }
   assert {
-    condition     = azapi_resource.this.tags == tomap({ environment = "test" })
-    error_message = "tags should be set on the identity."
+    condition     = azapi_resource.this.body.properties.ipTags[0].ipTagType == "RoutingPreference" && azapi_resource.this.body.properties.ipTags[0].tag == "Internet"
+    error_message = "ip_tags should map to ipTags entries."
+  }
+  assert {
+    condition     = azapi_resource.this.body.properties.publicIPPrefix.id == var.public_ip_prefix_id
+    error_message = "public_ip_prefix_id should map to properties.publicIPPrefix."
+  }
+  assert {
+    condition     = azapi_resource.this.body.properties.dnsSettings.domainNameLabel == "pip-test" && azapi_resource.this.body.properties.dnsSettings.domainNameLabelScope == "TenantReuse" && azapi_resource.this.body.properties.dnsSettings.reverseFqdn == "www.example.com."
+    error_message = "The DNS inputs should map to properties.dnsSettings."
+  }
+  assert {
+    condition     = azapi_resource.this.replace_triggers_external_values.domain_name_label_scope == "TenantReuse" && azapi_resource.this.replace_triggers_external_values.public_ip_prefix_id == var.public_ip_prefix_id && azapi_resource.this.replace_triggers_external_values.zones == tolist(["1", "2", "3"])
+    error_message = "The replacement inputs should hold the sorted zones, the prefix and the label scope."
+  }
+  assert {
+    condition     = output.fqdn == "pip-test.norwayeast.cloudapp.azure.com" && azapi_resource.this.tags == tomap({ environment = "test" })
+    error_message = "fqdn should come from the exported DNS settings, and tags should be set."
   }
 }
 
-run "federated_identity_credentials" {
+run "standard_v2_ipv6" {
   command = apply
 
   variables {
-    federated_identity_credentials = {
-      github-main = {
-        issuer  = "https://token.actions.githubusercontent.com"
-        subject = "repo:example/example:ref:refs/heads/main"
-      }
-      github-pr = {
-        issuer    = "https://token.actions.githubusercontent.com"
-        subject   = "repo:example/example:pull_request"
-        audiences = ["api://custom"]
-      }
-    }
+    sku_name   = "StandardV2"
+    ip_version = "IPv6"
+    zones      = ["1", "2", "3"]
   }
 
   assert {
-    condition     = toset(keys(module.federated_identity_credential)) == toset(["github-main", "github-pr"])
-    error_message = "One credential module should be created per map entry."
-  }
-  assert {
-    condition     = module.federated_identity_credential["github-main"].name == "github-main"
-    error_message = "The map key should be the credential name."
-  }
-  assert {
-    condition     = keys(output.federated_identity_credential_resource_ids) == ["github-main", "github-pr"]
-    error_message = "Credential resource IDs should be output by credential name."
+    condition     = azapi_resource.this.body.sku.name == "StandardV2" && azapi_resource.this.body.properties.publicIPAddressVersion == "IPv6"
+    error_message = "sku_name and ip_version should map to the request body."
   }
 }
 
-run "lock_defaults" {
+run "dns_label_only" {
+  command = apply
+
+  variables {
+    domain_name_label = "pip-test"
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.properties.dnsSettings.domainNameLabel == "pip-test" && azapi_resource.this.body.properties.dnsSettings.domainNameLabelScope == null && azapi_resource.this.body.properties.dnsSettings.reverseFqdn == null
+    error_message = "Unset DNS inputs should be sent as nulls in properties.dnsSettings."
+  }
+}
+
+run "ddos_protection" {
+  command = apply
+
+  variables {
+    ddos_protection_mode    = "Enabled"
+    ddos_protection_plan_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/ddosProtectionPlans/ddos-test"
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.properties.ddosSettings.protectionMode == "Enabled" && azapi_resource.this.body.properties.ddosSettings.ddosProtectionPlan.id == var.ddos_protection_plan_id
+    error_message = "The DDoS inputs should map to properties.ddosSettings."
+  }
+}
+
+run "interfaces" {
   command = apply
 
   variables {
     lock = { kind = "CanNotDelete" }
-  }
-
-  assert {
-    condition     = azapi_resource.lock[0].name == "lock-CanNotDelete" && azapi_resource.lock[0].type == "Microsoft.Authorization/locks@2020-05-01"
-    error_message = "The lock should get a name from its kind and the default resource type."
-  }
-  assert {
-    condition     = azapi_resource.lock[0].parent_id == azapi_resource.this.id && azapi_resource.lock[0].body.properties.level == "CanNotDelete"
-    error_message = "The lock should be placed on the identity with the requested level."
-  }
-  assert {
-    condition     = time_sleep.lock_removal[0].destroy_duration == "30s"
-    error_message = "A lock should come with the 30s removal pause."
-  }
-  assert {
-    condition     = time_sleep.lock_removal[0].triggers.identity_id == azapi_resource.this.id
-    error_message = "The pause should be replaced with the identity, so it also runs when a locked identity is replaced."
-  }
-}
-
-run "lock_named" {
-  command = apply
-
-  variables {
-    lock = { kind = "ReadOnly", name = "lock-custom", notes = "Managed by Terraform." }
-  }
-
-  assert {
-    condition     = azapi_resource.lock[0].name == "lock-custom" && azapi_resource.lock[0].body.properties.notes == "Managed by Terraform."
-    error_message = "The lock should use the given name and notes."
-  }
-}
-
-run "role_assignments" {
-  command = apply
-
-  variables {
     role_assignments = {
-      by_name = {
+      reader = {
         role_definition_id_or_name = "Reader"
         principal_id               = "55555555-5555-5555-5555-555555555555"
       }
@@ -178,60 +185,70 @@ run "role_assignments" {
         role_definition_id_or_name       = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
         principal_id                     = "66666666-6666-6666-6666-666666666666"
         skip_service_principal_aad_check = true
+        description                      = "Read the address."
       }
-      management_group_role = {
-        role_definition_id_or_name = "/providers/Microsoft.Management/managementGroups/mg-test/providers/Microsoft.Authorization/roleDefinitions/99999999-9999-9999-9999-999999999999"
-        principal_id               = "55555555-5555-5555-5555-555555555555"
+    }
+    diagnostic_settings = {
+      workspace = {
+        workspace_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.OperationalInsights/workspaces/log-test"
+        logs                  = [{ category_group = "allLogs" }]
+        metrics               = [{ category = "AllMetrics" }]
       }
       named = {
-        name                                   = "77777777-7777-7777-7777-777777777777"
-        role_definition_id_or_name             = "Reader"
-        principal_id                           = "88888888-8888-8888-8888-888888888888"
-        delegated_managed_identity_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-delegated"
+        name                  = "diag-custom"
+        workspace_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.OperationalInsights/workspaces/log-test"
+        logs                  = [{ category = "DDoSProtectionNotifications" }]
       }
     }
   }
 
   assert {
-    condition     = azapi_resource.role_assignments["by_name"].body.properties.roleDefinitionId == "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
-    error_message = "A role name should resolve to the role definition ID found in the resource group."
+    condition     = azapi_resource.lock[0].name == "lock-CanNotDelete" && azapi_resource.lock[0].parent_id == azapi_resource.this.id && azapi_resource.lock[0].body.properties.level == "CanNotDelete"
+    error_message = "The lock should be placed on the public IP address."
   }
   assert {
-    condition     = azapi_resource.role_assignments["tenant_level_id"].body.properties.roleDefinitionId == "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
-    error_message = "A tenant-level role definition ID should be qualified with the subscription."
+    condition     = time_sleep.lock_removal[0].destroy_duration == "30s" && time_sleep.lock_removal[0].triggers.public_ip_address_id == azapi_resource.this.id
+    error_message = "A lock should come with the 30s removal pause, replaced with the address."
   }
   assert {
-    condition     = azapi_resource.role_assignments["management_group_role"].body.properties.roleDefinitionId == "/providers/Microsoft.Management/managementGroups/mg-test/providers/Microsoft.Authorization/roleDefinitions/99999999-9999-9999-9999-999999999999"
-    error_message = "A management-group-scoped role definition ID should be passed through unchanged."
+    condition     = azapi_resource.role_assignments["reader"].body.properties.roleDefinitionId == "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7" && azapi_resource.role_assignments["reader"].parent_id == azapi_resource.this.id
+    error_message = "A role name should resolve to its role definition ID, on the public IP address."
   }
   assert {
-    condition     = azapi_resource.role_assignments["tenant_level_id"].body.properties.principalType == "ServicePrincipal" && azapi_resource.role_assignments["by_name"].body.properties.principalType == null
-    error_message = "skip_service_principal_aad_check should set principalType to ServicePrincipal, and only then."
+    condition     = azapi_resource.role_assignments["tenant_level_id"].body.properties.roleDefinitionId == "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7" && azapi_resource.role_assignments["tenant_level_id"].body.properties.principalType == "ServicePrincipal"
+    error_message = "A tenant-level role definition ID should be qualified with the subscription, and the skip flag should set principalType."
   }
   assert {
-    condition     = azapi_resource.role_assignments["named"].name == "77777777-7777-7777-7777-777777777777" && azapi_resource.role_assignments["named"].replace_triggers_external_values.name == "77777777-7777-7777-7777-777777777777"
-    error_message = "An explicit name should be used and should replace the assignment when it changes."
+    condition     = time_sleep.lock_removal[0].triggers.children == sha256(jsonencode([var.diagnostic_settings, var.role_assignments]))
+    error_message = "A change to the diagnostic settings or role assignments should replace the pause, and with it the lock."
   }
   assert {
-    condition     = azapi_resource.role_assignments["named"].replace_triggers_external_values.delegated_managed_identity_resource_id == "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-delegated"
-    error_message = "A changed delegated identity should replace the assignment."
+    condition     = azapi_resource.diagnostic_settings["workspace"].replace_triggers_external_values.workspace_resource_id == var.diagnostic_settings["workspace"].workspace_resource_id
+    error_message = "Any change to a diagnostic setting's inputs should recreate it."
   }
   assert {
-    condition     = azapi_resource.role_assignments["by_name"].replace_triggers_external_values.name == null
-    error_message = "A generated name should not be a replacement trigger."
+    condition     = azapi_resource.role_assignments["tenant_level_id"].replace_triggers_external_values.description == "Read the address." && azapi_resource.role_assignments["reader"].replace_triggers_external_values.description == null && azapi_resource.role_assignments["reader"].replace_triggers_external_values.condition == null
+    error_message = "A role assignment's description and condition should be replacement inputs, so clearing them reaches Azure."
   }
   assert {
-    condition     = alltrue([for ra in azapi_resource.role_assignments : ra.parent_id == azapi_resource.this.id && ra.type == "Microsoft.Authorization/roleAssignments@2022-04-01"])
-    error_message = "Role assignments should be created on the identity with the default resource type."
+    condition     = azapi_resource.diagnostic_settings["workspace"].name == "diag-workspace" && azapi_resource.diagnostic_settings["named"].name == "diag-custom"
+    error_message = "Diagnostic settings should be named diag-<key> unless a name is given."
+  }
+  assert {
+    condition     = azapi_resource.diagnostic_settings["workspace"].parent_id == azapi_resource.this.id && azapi_resource.diagnostic_settings["workspace"].type == "Microsoft.Insights/diagnosticSettings@2021-05-01-preview"
+    error_message = "Diagnostic settings should be created on the public IP address with the default resource type."
+  }
+  assert {
+    condition     = azapi_resource.diagnostic_settings["workspace"].body.properties.workspaceId == "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.OperationalInsights/workspaces/log-test" && azapi_resource.diagnostic_settings["workspace"].body.properties.logs[0].categoryGroup == "allLogs" && azapi_resource.diagnostic_settings["workspace"].body.properties.metrics[0].category == "AllMetrics"
+    error_message = "The diagnostic setting should send the requested logs and metrics to the workspace."
   }
 }
 
 run "azapi_settings_reach_every_resource" {
   command = apply
 
-  # ignore_body_changes is write-only, so a test cannot read it back, and avm_interface_ignore_body_changes
-  # only checks that the argument uses the variable, not which slot. Setting it here proves the slots are
-  # accepted; which resource reads which slot is left to review.
+  # ignore_body_changes is write-only, so a test cannot read it back; setting it proves the slots are
+  # accepted. Which resource reads which slot is left to review.
   variables {
     lock = { kind = "CanNotDelete" }
     role_assignments = {
@@ -240,31 +257,36 @@ run "azapi_settings_reach_every_resource" {
         principal_id               = "55555555-5555-5555-5555-555555555555"
       }
     }
+    diagnostic_settings = {
+      workspace = {
+        workspace_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.OperationalInsights/workspaces/log-test"
+        metrics               = [{ category = "AllMetrics" }]
+      }
+    }
     resource_types = {
-      managedidentity_user_assigned_identities = "Microsoft.ManagedIdentity/userAssignedIdentities@2025-01-31-preview"
-      authorization_locks                      = "Microsoft.Authorization/locks@2016-09-01"
-      authorization_role_assignments           = "Microsoft.Authorization/roleAssignments@2020-04-01-preview"
+      network_public_ip_addresses    = "Microsoft.Network/publicIPAddresses@2024-10-01"
+      authorization_locks            = "Microsoft.Authorization/locks@2016-09-01"
+      authorization_role_assignments = "Microsoft.Authorization/roleAssignments@2020-04-01-preview"
+      # No other diagnostic settings API version has this body's shape (2020-01-01-preview has no
+      # metrics), so the insights_diagnostic_settings slot is not overridden here.
     }
     ignore_body_changes = {
-      managedidentity_user_assigned_identities = ["properties.isolationScope"]
-      authorization_locks                      = ["properties.notes"]
-      authorization_role_assignments           = ["properties.description"]
+      network_public_ip_addresses    = ["properties.idleTimeoutInMinutes"]
+      authorization_locks            = ["properties.notes"]
+      authorization_role_assignments = ["properties.description"]
+      insights_diagnostic_settings   = ["properties.logs"]
     }
-    retry = {
-      error_message_regex = ["AnotherOperationInProgress"]
-    }
-    timeouts = {
-      create = "15m"
-    }
+    retry    = { error_message_regex = ["AnotherOperationInProgress"] }
+    timeouts = { create = "15m" }
   }
 
   assert {
-    condition     = azapi_resource.this.type == "Microsoft.ManagedIdentity/userAssignedIdentities@2025-01-31-preview" && azapi_resource.lock[0].type == "Microsoft.Authorization/locks@2016-09-01" && azapi_resource.role_assignments["reader"].type == "Microsoft.Authorization/roleAssignments@2020-04-01-preview"
-    error_message = "resource_types overrides should reach the identity, the lock and the role assignments."
+    condition     = azapi_resource.this.type == "Microsoft.Network/publicIPAddresses@2024-10-01" && azapi_resource.lock[0].type == "Microsoft.Authorization/locks@2016-09-01" && azapi_resource.role_assignments["reader"].type == "Microsoft.Authorization/roleAssignments@2020-04-01-preview"
+    error_message = "resource_types overrides should reach the address, the lock and the role assignments."
   }
   assert {
-    condition     = alltrue([for r in [azapi_resource.this, azapi_resource.lock[0], azapi_resource.role_assignments["reader"]] : r.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && r.timeouts.create == "15m"])
-    error_message = "retry and timeouts should reach every resource in the root module."
+    condition     = alltrue([for r in [azapi_resource.this, azapi_resource.lock[0], azapi_resource.role_assignments["reader"], azapi_resource.diagnostic_settings["workspace"]] : r.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && r.timeouts.create == "15m"])
+    error_message = "retry and timeouts should reach every resource."
   }
 }
 
@@ -272,7 +294,7 @@ run "invalid_name" {
   command = plan
 
   variables {
-    name = "-bad"
+    name = "-pip"
   }
 
   expect_failures = [var.name]
@@ -288,24 +310,171 @@ run "invalid_parent_id" {
   expect_failures = [var.parent_id]
 }
 
-run "invalid_isolation_scope" {
+run "basic_sku" {
   command = plan
 
   variables {
-    isolation_scope = "Global"
+    sku_name = "Basic"
   }
 
-  expect_failures = [var.isolation_scope]
+  expect_failures = [var.sku_name]
 }
 
-run "empty_isolation_scope" {
+run "global_tier_with_zones" {
   command = plan
 
   variables {
-    isolation_scope = ""
+    sku_tier = "Global"
+    zones    = ["1"]
   }
 
-  expect_failures = [var.isolation_scope]
+  expect_failures = [var.sku_tier]
+}
+
+run "invalid_zone" {
+  command = plan
+
+  variables {
+    zones = ["4"]
+  }
+
+  expect_failures = [var.zones]
+}
+
+run "empty_zones" {
+  command = plan
+
+  variables {
+    zones = []
+  }
+
+  expect_failures = [var.zones]
+}
+
+run "zonal_standard_v2" {
+  command = plan
+
+  variables {
+    sku_name = "StandardV2"
+    zones    = ["1"]
+  }
+
+  expect_failures = [var.zones]
+}
+
+run "ipv6_idle_timeout" {
+  command = plan
+
+  variables {
+    ip_version              = "IPv6"
+    idle_timeout_in_minutes = 10
+  }
+
+  expect_failures = [var.idle_timeout_in_minutes]
+}
+
+run "internet_routing_for_ipv6" {
+  command = plan
+
+  variables {
+    ip_version = "IPv6"
+    ip_tags    = { RoutingPreference = "Internet" }
+  }
+
+  expect_failures = [var.ip_tags]
+}
+
+run "internet_routing_for_standard_v2" {
+  command = plan
+
+  variables {
+    sku_name = "StandardV2"
+    ip_tags  = { RoutingPreference = "Internet" }
+  }
+
+  expect_failures = [var.ip_tags]
+}
+
+run "reverse_dns_for_ipv6" {
+  command = plan
+
+  variables {
+    ip_version        = "IPv6"
+    domain_name_label = "pip-test"
+    reverse_fqdn      = "www.example.com."
+  }
+
+  expect_failures = [var.reverse_fqdn]
+}
+
+run "invalid_ip_version" {
+  command = plan
+
+  variables {
+    ip_version = "IPv5"
+  }
+
+  expect_failures = [var.ip_version]
+}
+
+run "idle_timeout_too_short" {
+  command = plan
+
+  variables {
+    idle_timeout_in_minutes = 3
+  }
+
+  expect_failures = [var.idle_timeout_in_minutes]
+}
+
+run "invalid_domain_name_label" {
+  command = plan
+
+  variables {
+    domain_name_label = "Pip_Test"
+  }
+
+  expect_failures = [var.domain_name_label]
+}
+
+run "scope_without_label" {
+  command = plan
+
+  variables {
+    domain_name_label_scope = "TenantReuse"
+  }
+
+  expect_failures = [var.domain_name_label_scope]
+}
+
+run "reverse_fqdn_without_label" {
+  command = plan
+
+  variables {
+    reverse_fqdn = "www.example.com."
+  }
+
+  expect_failures = [var.reverse_fqdn]
+}
+
+run "ddos_plan_without_enabled_mode" {
+  command = plan
+
+  variables {
+    ddos_protection_plan_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/ddosProtectionPlans/ddos-test"
+  }
+
+  expect_failures = [var.ddos_protection_plan_id]
+}
+
+run "invalid_prefix_id" {
+  command = plan
+
+  variables {
+    public_ip_prefix_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-other"
+  }
+
+  expect_failures = [var.public_ip_prefix_id]
 }
 
 run "invalid_lock_kind" {
@@ -316,35 +485,4 @@ run "invalid_lock_kind" {
   }
 
   expect_failures = [var.lock]
-}
-
-run "too_many_credentials" {
-  command = plan
-
-  variables {
-    federated_identity_credentials = {
-      for i in range(21) : "credential-${i}" => {
-        issuer  = "https://token.actions.githubusercontent.com"
-        subject = "repo:example/example:environment:env-${i}"
-      }
-    }
-  }
-
-  expect_failures = [var.federated_identity_credentials]
-}
-
-run "invalid_delegated_identity" {
-  command = plan
-
-  variables {
-    role_assignments = {
-      reader = {
-        role_definition_id_or_name             = "Reader"
-        principal_id                           = "55555555-5555-5555-5555-555555555555"
-        delegated_managed_identity_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test"
-      }
-    }
-  }
-
-  expect_failures = [var.role_assignments]
 }
