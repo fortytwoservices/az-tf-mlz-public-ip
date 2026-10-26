@@ -1,4 +1,4 @@
-# A resource group and a user-assigned identity for one integration test run.
+# A resource group for one integration test run.
 terraform {
   required_providers {
     azapi = {
@@ -27,13 +27,14 @@ resource "azapi_resource" "resource_group" {
   location  = "norwayeast"
 }
 
-resource "azapi_resource" "identity" {
-  type      = "Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30"
-  name      = "id-mlz-it-${random_string.suffix.result}"
-  parent_id = azapi_resource.resource_group.id
-  location  = azapi_resource.resource_group.location
+output "location" {
+  value = azapi_resource.resource_group.location
 }
 
-output "identity_id" {
-  value = azapi_resource.identity.id
+output "resource_group_id" {
+  value = azapi_resource.resource_group.id
+}
+
+output "suffix" {
+  value = random_string.suffix.result
 }

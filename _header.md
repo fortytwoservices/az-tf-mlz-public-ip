@@ -1,33 +1,26 @@
-# az-tf-mlz-template
+# az-tf-mlz-public-ip
 
-The template for Fortytwo's managed landing zone (MLZ) Terraform modules, `az-tf-mlz-<name>`: AzAPI
-only, shaped like the Azure Verified Modules (AVM) AzAPI modules, without telemetry.
+A Fortytwo managed landing zone (MLZ) module for Azure public IP addresses, in AzAPI. The root module
+manages one public IP address (`Microsoft.Network/publicIPAddresses`); `modules/public_ip_prefix`
+manages a public IP prefix and is called on its own.
 
-## Start a module from this template
+- Standard or StandardV2 SKU, Regional or Global tier; the address is always static.
+- Zones default to Azure's default (zone-redundant where the region has availability zones); set
+  `zones` for a zonal address.
+- Optional DNS label (with reuse scope), reverse FQDN, DDoS protection settings, IP tags, and an
+  address taken from a prefix (`public_ip_prefix_id`).
+- Lock, role assignments and diagnostic settings, as in Azure Verified Modules.
+- Changing the SKU, zones, IP version, prefix, IP tags or DNS label scope replaces the address, because
+  Azure cannot change them in place.
 
-1. Create the repository from the template and apply the repository settings:
+```hcl
+module "public_ip" {
+  source = "git::https://github.com/fortytwoservices/az-tf-mlz-public-ip.git?ref=vX.Y.Z"
 
-   ```sh
-   gh repo create fortytwoservices/az-tf-mlz-<name> --internal --template fortytwoservices/az-tf-mlz-template --clone
-   cd az-tf-mlz-<name>
-   scripts/repo-settings.sh fortytwoservices/az-tf-mlz-<name>
-   ```
+  name      = "pip-example"
+  parent_id = "/subscriptions/<subscription>/resourceGroups/<resource group>"
+  location  = "norwayeast"
+}
+```
 
-2. On a branch, replace the placeholder module (below) with the real one: root files, `modules/*`,
-   `examples/*` and the tests. Rewrite this `_header.md`; keep `_footer.md`.
-3. Run `scripts/check.sh --fix`, then the Azure tests, and open a pull request whose title starts with
-   `feat:`. Merging it makes release-please open the release pull request for the first version.
-
-## The placeholder module
-
-A user-assigned identity with federated identity credentials. It is here to keep every pattern a
-module needs working and tested:
-
-- the primary resource `azapi_resource.this`, with `resource_types`, `ignore_body_changes`, `retry`,
-  `timeouts` and `tags`;
-- a child resource type as a submodule managing one instance (`modules/federated_identity_credential`),
-  called with `for_each` by the root, with its writes serialised on the parent (`locks`);
-- the lock and role assignment interfaces through `Azure/avm-utl-interfaces/azure`, with the pause that
-  lets a deleted lock propagate before anything else is destroyed;
-- unit tests with mocked providers, integration tests in Azure, and an example that is applied,
-  planned again (no changes allowed) and destroyed.
+The examples show a prefix with addresses taken from it, and the interfaces.

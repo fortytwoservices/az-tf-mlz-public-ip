@@ -1,4 +1,5 @@
-# A resource group for one integration test run, and the identity running the test.
+# A resource group and a Log Analytics workspace for one integration test run, and the identity running
+# the test.
 terraform {
   required_providers {
     azapi = {
@@ -27,6 +28,19 @@ resource "azapi_resource" "resource_group" {
   location  = "norwayeast"
 }
 
+resource "azapi_resource" "log_analytics_workspace" {
+  type      = "Microsoft.OperationalInsights/workspaces@2023-09-01"
+  name      = "log-mlz-it-${random_string.suffix.result}"
+  parent_id = azapi_resource.resource_group.id
+  location  = azapi_resource.resource_group.location
+  body = {
+    properties = {
+      retentionInDays = 30
+      sku             = { name = "PerGB2018" }
+    }
+  }
+}
+
 output "location" {
   value = azapi_resource.resource_group.location
 }
@@ -41,4 +55,8 @@ output "resource_group_id" {
 
 output "suffix" {
   value = random_string.suffix.result
+}
+
+output "workspace_id" {
+  value = azapi_resource.log_analytics_workspace.id
 }
