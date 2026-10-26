@@ -176,6 +176,7 @@ run "interfaces" {
         role_definition_id_or_name       = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
         principal_id                     = "66666666-6666-6666-6666-666666666666"
         skip_service_principal_aad_check = true
+        description                      = "Read the address."
       }
     }
     diagnostic_settings = {
@@ -215,6 +216,10 @@ run "interfaces" {
   assert {
     condition     = azapi_resource.diagnostic_settings["workspace"].replace_triggers_external_values.workspace_resource_id == var.diagnostic_settings["workspace"].workspace_resource_id
     error_message = "Any change to a diagnostic setting's inputs should recreate it."
+  }
+  assert {
+    condition     = azapi_resource.role_assignments["tenant_level_id"].replace_triggers_external_values.description == "Read the address." && azapi_resource.role_assignments["reader"].replace_triggers_external_values.description == null && azapi_resource.role_assignments["reader"].replace_triggers_external_values.condition == null
+    error_message = "A role assignment's description and condition should be replacement inputs, so clearing them reaches Azure."
   }
   assert {
     condition     = azapi_resource.diagnostic_settings["workspace"].name == "diag-workspace" && azapi_resource.diagnostic_settings["named"].name == "diag-custom"

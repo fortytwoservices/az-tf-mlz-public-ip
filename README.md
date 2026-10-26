@@ -11,7 +11,10 @@ manages a public IP prefix and is called on its own.
   `zones` for a zonal address.
 - Optional DNS label (with reuse scope), reverse FQDN, DDoS protection settings, IP tags, and an
   address taken from a prefix (`public_ip_prefix_id`).
-- Lock, role assignments and diagnostic settings, as in Azure Verified Modules.
+- Lock, role assignments and diagnostic settings, as in Azure Verified Modules. Changing the diagnostic
+  settings or role assignments of a locked address removes the lock, makes the change and locks it
+  again, because a lock blocks deleting them. A `ReadOnly` lock also blocks changes to the address
+  itself: set `lock = null`, apply your change, then lock it again.
 - Changing the SKU, zones, IP version, prefix, IP tags or DNS label scope replaces the address, because
   Azure cannot change them in place.
 

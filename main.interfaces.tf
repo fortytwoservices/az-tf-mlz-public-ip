@@ -57,10 +57,14 @@ resource "azapi_resource" "role_assignments" {
   ignore_casing        = true
   ignore_null_property = true
   # An existing role assignment cannot be changed (RoleAssignmentUpdateNotPermitted), so a new principal,
-  # role or delegated identity replaces it. A changed explicit name does too, despite
-  # `ignore_changes = [name]` below; a generated name stays null here.
+  # role or delegated identity replaces it. So does a cleared condition or description: the body drops
+  # the null (ignore_null_property) and the change would not reach Azure. A changed explicit name
+  # replaces it too, despite `ignore_changes = [name]` below; a generated name stays null here.
   replace_triggers_external_values = {
+    condition                              = var.role_assignments[each.key].condition
+    condition_version                      = var.role_assignments[each.key].condition_version
     delegated_managed_identity_resource_id = var.role_assignments[each.key].delegated_managed_identity_resource_id
+    description                            = var.role_assignments[each.key].description
     name                                   = var.role_assignments[each.key].name
     principal_id                           = lower(var.role_assignments[each.key].principal_id)
     role_definition_id_or_name             = lower(var.role_assignments[each.key].role_definition_id_or_name)
