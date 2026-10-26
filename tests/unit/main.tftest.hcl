@@ -93,9 +93,7 @@ run "address_options" {
   command = apply
 
   variables {
-    sku_name                = "StandardV2"
     zones                   = ["3", "1", "2", "1"]
-    ip_version              = "IPv6"
     idle_timeout_in_minutes = 30
     ip_tags                 = { RoutingPreference = "Internet" }
     public_ip_prefix_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPPrefixes/ippre-test"
@@ -106,12 +104,8 @@ run "address_options" {
   }
 
   assert {
-    condition     = azapi_resource.this.body.sku.name == "StandardV2" && azapi_resource.this.body.zones == tolist(["1", "2", "3"])
-    error_message = "sku_name and zones should map to the request body."
-  }
-  assert {
-    condition     = azapi_resource.this.body.properties.publicIPAddressVersion == "IPv6" && azapi_resource.this.body.properties.idleTimeoutInMinutes == 30
-    error_message = "ip_version and idle_timeout_in_minutes should map to the request body."
+    condition     = azapi_resource.this.body.zones == tolist(["1", "2", "3"]) && azapi_resource.this.body.properties.idleTimeoutInMinutes == 30
+    error_message = "zones (sorted, de-duplicated) and idle_timeout_in_minutes should map to the request body."
   }
   assert {
     condition     = azapi_resource.this.body.properties.ipTags[0].ipTagType == "RoutingPreference" && azapi_resource.this.body.properties.ipTags[0].tag == "Internet"
@@ -132,6 +126,21 @@ run "address_options" {
   assert {
     condition     = output.fqdn == "pip-test.norwayeast.cloudapp.azure.com" && azapi_resource.this.tags == tomap({ environment = "test" })
     error_message = "fqdn should come from the exported DNS settings, and tags should be set."
+  }
+}
+
+run "standard_v2_ipv6" {
+  command = apply
+
+  variables {
+    sku_name   = "StandardV2"
+    ip_version = "IPv6"
+    zones      = ["1", "2", "3"]
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.sku.name == "StandardV2" && azapi_resource.this.body.properties.publicIPAddressVersion == "IPv6"
+    error_message = "sku_name and ip_version should map to the request body."
   }
 }
 
@@ -340,6 +349,62 @@ run "empty_zones" {
   }
 
   expect_failures = [var.zones]
+}
+
+run "zonal_standard_v2" {
+  command = plan
+
+  variables {
+    sku_name = "StandardV2"
+    zones    = ["1"]
+  }
+
+  expect_failures = [var.zones]
+}
+
+run "ipv6_idle_timeout" {
+  command = plan
+
+  variables {
+    ip_version              = "IPv6"
+    idle_timeout_in_minutes = 10
+  }
+
+  expect_failures = [var.idle_timeout_in_minutes]
+}
+
+run "internet_routing_for_ipv6" {
+  command = plan
+
+  variables {
+    ip_version = "IPv6"
+    ip_tags    = { RoutingPreference = "Internet" }
+  }
+
+  expect_failures = [var.ip_tags]
+}
+
+run "internet_routing_for_standard_v2" {
+  command = plan
+
+  variables {
+    sku_name = "StandardV2"
+    ip_tags  = { RoutingPreference = "Internet" }
+  }
+
+  expect_failures = [var.ip_tags]
+}
+
+run "reverse_dns_for_ipv6" {
+  command = plan
+
+  variables {
+    ip_version        = "IPv6"
+    domain_name_label = "pip-test"
+    reverse_fqdn      = "www.example.com."
+  }
+
+  expect_failures = [var.reverse_fqdn]
 }
 
 run "invalid_ip_version" {

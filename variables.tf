@@ -89,13 +89,22 @@ variable "idle_timeout_in_minutes" {
     condition     = var.idle_timeout_in_minutes >= 4 && var.idle_timeout_in_minutes <= 30 && floor(var.idle_timeout_in_minutes) == var.idle_timeout_in_minutes
     error_message = "`idle_timeout_in_minutes` must be a whole number from 4 to 30."
   }
+  validation {
+    condition     = var.ip_version == "IPv4" || var.idle_timeout_in_minutes == 4
+    error_message = "An IPv6 address has a fixed idle timeout of 4 minutes (Microsoft Learn)."
+  }
 }
 
 variable "ip_tags" {
   type        = map(string)
   default     = {}
-  description = "IP tags, keyed by tag type, for example `{ RoutingPreference = \"Internet\" }`. Changing them replaces the public IP address."
+  description = "IP tags, keyed by tag type, for example `{ RoutingPreference = \"Internet\" }` (Standard IPv4 only). Changing them replaces the public IP address."
   nullable    = false
+
+  validation {
+    condition     = lookup(var.ip_tags, "RoutingPreference", null) != "Internet" || (var.sku_name == "Standard" && var.ip_version == "IPv4")
+    error_message = "Routing preference Internet is supported only for Standard IPv4 addresses (Microsoft Learn)."
+  }
 }
 
 variable "ip_version" {
@@ -129,6 +138,10 @@ variable "reverse_fqdn" {
   validation {
     condition     = var.reverse_fqdn == null || var.domain_name_label != null
     error_message = "`reverse_fqdn` requires `domain_name_label` (Azure needs a label in every dnsSettings section)."
+  }
+  validation {
+    condition     = var.reverse_fqdn == null || var.ip_version == "IPv4"
+    error_message = "Reverse DNS is not supported for IPv6 addresses (Microsoft Learn)."
   }
 }
 
@@ -168,5 +181,9 @@ variable "zones" {
   validation {
     condition     = var.zones == null ? true : length(var.zones) > 0 && alltrue([for zone in var.zones : contains(["1", "2", "3"], zone)])
     error_message = "`zones` must be null or a non-empty list of \"1\", \"2\" and \"3\"."
+  }
+  validation {
+    condition     = var.zones == null || var.sku_name != "StandardV2" ? true : length(distinct(var.zones)) == 3
+    error_message = "A StandardV2 address can only be zone-redundant: leave `zones` null or set all three (Microsoft Learn)."
   }
 }

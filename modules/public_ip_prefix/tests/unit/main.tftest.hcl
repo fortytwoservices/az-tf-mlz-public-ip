@@ -188,6 +188,17 @@ run "global_tier_with_standard_v2" {
   expect_failures = [var.sku_tier]
 }
 
+run "zonal_standard_v2" {
+  command = plan
+
+  variables {
+    sku_name = "StandardV2"
+    zones    = ["2"]
+  }
+
+  expect_failures = [var.zones]
+}
+
 run "invalid_zone" {
   command = plan
 

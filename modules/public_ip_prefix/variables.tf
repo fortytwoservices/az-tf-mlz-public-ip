@@ -99,4 +99,8 @@ variable "zones" {
     condition     = var.zones == null ? true : length(var.zones) > 0 && alltrue([for zone in var.zones : contains(["1", "2", "3"], zone)])
     error_message = "`zones` must be null or a non-empty list of \"1\", \"2\" and \"3\"."
   }
+  validation {
+    condition     = var.zones == null || var.sku_name != "StandardV2" ? true : length(distinct(var.zones)) == 3
+    error_message = "A StandardV2 prefix can only be zone-redundant: leave `zones` null or set all three (Microsoft Learn)."
+  }
 }

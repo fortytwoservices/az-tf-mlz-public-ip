@@ -200,7 +200,7 @@ Default: `{}`
 
 ### <a name="input_ip_tags"></a> [ip\_tags](#input\_ip\_tags)
 
-Description: IP tags, keyed by tag type, for example `{ RoutingPreference = "Internet" }`. Changing them replaces the public IP address.
+Description: IP tags, keyed by tag type, for example `{ RoutingPreference = "Internet" }` (Standard IPv4 only). Changing them replaces the public IP address.
 
 Type: `map(string)`
 
