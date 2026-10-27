@@ -19,6 +19,27 @@ jobs:
       TF_PLUGIN_CACHE_DIR: /home/runner/.terraform.d/plugin-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Otherwise the checkout's token header wins over the reader token below, and cloning a module
+          # fails with "Repository not found".
+          persist-credentials: false
+
+      # The az-tf-mlz-* modules are internal, and this repository's token reads only this repository.
+      - id: reader
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.AZ_TF_MODULE_READER_CLIENT_ID }}
+          private-key: ${{ secrets.AZ_TF_MODULE_READER_PRIVATE_KEY }}
+          owner: fortytwoservices
+          permission-contents: read
+
+      - name: Read the az-tf-mlz-* modules with the reader token
+        env:
+          TOKEN: ${{ steps.reader.outputs.token }}
+        run: |
+          git config --global \
+            url."https://x-access-token:${TOKEN}@github.com/fortytwoservices/az-tf-mlz-".insteadOf \
+            "https://github.com/fortytwoservices/az-tf-mlz-"
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:

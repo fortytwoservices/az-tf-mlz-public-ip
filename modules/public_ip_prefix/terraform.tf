@@ -7,10 +7,5 @@ terraform {
       source  = "Azure/azapi"
       version = "~> 2.12"
     }
-    # random ~> 3.6 comes with avm-utl-interfaces (role assignment names).
-    time = {
-      source  = "hashicorp/time"
-      version = "~> 0.13"
-    }
   }
 }
