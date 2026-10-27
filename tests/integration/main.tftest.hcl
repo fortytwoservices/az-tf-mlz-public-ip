@@ -60,11 +60,11 @@ run "replace_child_under_lock" {
   }
 
   plan_options {
-    replace = [azapi_resource.diagnostic_settings["workspace"], time_sleep.lock_removal[0]]
+    replace = [module.interfaces.azapi_resource.diagnostic_settings["workspace"], module.interfaces.time_sleep.lock_removal[0]]
   }
 
   assert {
-    condition     = length(azapi_resource.diagnostic_settings) == 1 && length(azapi_resource.lock) == 1
+    condition     = length(module.interfaces.diagnostic_setting_resource_ids) == 1 && module.interfaces.lock_resource_id != null
     error_message = "The diagnostic setting should be recreated and the lock back."
   }
 }
@@ -113,7 +113,7 @@ run "clear_settings_and_remove_children_under_lock" {
     error_message = "The DNS label should be removed in Azure, with the address kept."
   }
   assert {
-    condition     = length(azapi_resource.diagnostic_settings) + length(azapi_resource.role_assignments) == 0 && length(azapi_resource.lock) == 1
+    condition     = length(module.interfaces.diagnostic_setting_resource_ids) + length(module.interfaces.role_assignment_resource_ids) == 0 && module.interfaces.lock_resource_id != null
     error_message = "The diagnostic setting and role assignment should be gone, and the lock back."
   }
 }

@@ -80,7 +80,7 @@ run "defaults" {
     error_message = "retry, timeouts and tags should be unset by default."
   }
   assert {
-    condition     = length(azapi_resource.lock) + length(time_sleep.lock_removal) + length(azapi_resource.role_assignments) + length(azapi_resource.diagnostic_settings) == 0
+    condition     = module.interfaces.lock_resource_id == null && length(module.interfaces.role_assignment_resource_ids) + length(module.interfaces.diagnostic_setting_resource_ids) == 0
     error_message = "No lock, role assignment or diagnostic setting should be created by default."
   }
   assert {
@@ -202,45 +202,10 @@ run "interfaces" {
     }
   }
 
+  # Their behaviour is tested in az-tf-mlz-interfaces; a test sees only its outputs.
   assert {
-    condition     = azapi_resource.lock[0].name == "lock-CanNotDelete" && azapi_resource.lock[0].parent_id == azapi_resource.this.id && azapi_resource.lock[0].body.properties.level == "CanNotDelete"
-    error_message = "The lock should be placed on the public IP address."
-  }
-  assert {
-    condition     = time_sleep.lock_removal[0].destroy_duration == "30s" && time_sleep.lock_removal[0].triggers.public_ip_address_id == azapi_resource.this.id
-    error_message = "A lock should come with the 30s removal pause, replaced with the address."
-  }
-  assert {
-    condition     = azapi_resource.role_assignments["reader"].body.properties.roleDefinitionId == "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7" && azapi_resource.role_assignments["reader"].parent_id == azapi_resource.this.id
-    error_message = "A role name should resolve to its role definition ID, on the public IP address."
-  }
-  assert {
-    condition     = azapi_resource.role_assignments["tenant_level_id"].body.properties.roleDefinitionId == "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7" && azapi_resource.role_assignments["tenant_level_id"].body.properties.principalType == "ServicePrincipal"
-    error_message = "A tenant-level role definition ID should be qualified with the subscription, and the skip flag should set principalType."
-  }
-  assert {
-    condition     = time_sleep.lock_removal[0].triggers.children == sha256(jsonencode([var.diagnostic_settings, var.role_assignments]))
-    error_message = "A change to the diagnostic settings or role assignments should replace the pause, and with it the lock."
-  }
-  assert {
-    condition     = azapi_resource.diagnostic_settings["workspace"].replace_triggers_external_values.workspace_resource_id == var.diagnostic_settings["workspace"].workspace_resource_id
-    error_message = "Any change to a diagnostic setting's inputs should recreate it."
-  }
-  assert {
-    condition     = azapi_resource.role_assignments["tenant_level_id"].replace_triggers_external_values.description == "Read the address." && azapi_resource.role_assignments["reader"].replace_triggers_external_values.description == null && azapi_resource.role_assignments["reader"].replace_triggers_external_values.condition == null
-    error_message = "A role assignment's description and condition should be replacement inputs, so clearing them reaches Azure."
-  }
-  assert {
-    condition     = azapi_resource.diagnostic_settings["workspace"].name == "diag-workspace" && azapi_resource.diagnostic_settings["named"].name == "diag-custom"
-    error_message = "Diagnostic settings should be named diag-<key> unless a name is given."
-  }
-  assert {
-    condition     = azapi_resource.diagnostic_settings["workspace"].parent_id == azapi_resource.this.id && azapi_resource.diagnostic_settings["workspace"].type == "Microsoft.Insights/diagnosticSettings@2021-05-01-preview"
-    error_message = "Diagnostic settings should be created on the public IP address with the default resource type."
-  }
-  assert {
-    condition     = azapi_resource.diagnostic_settings["workspace"].body.properties.workspaceId == "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.OperationalInsights/workspaces/log-test" && azapi_resource.diagnostic_settings["workspace"].body.properties.logs[0].categoryGroup == "allLogs" && azapi_resource.diagnostic_settings["workspace"].body.properties.metrics[0].category == "AllMetrics"
-    error_message = "The diagnostic setting should send the requested logs and metrics to the workspace."
+    condition     = module.interfaces.lock_resource_id != null && toset(keys(module.interfaces.role_assignment_resource_ids)) == toset(["reader", "tenant_level_id"]) && toset(keys(module.interfaces.diagnostic_setting_resource_ids)) == toset(["named", "workspace"])
+    error_message = "The lock, role assignments and diagnostic settings should be created through az-tf-mlz-interfaces."
   }
 }
 
@@ -248,7 +213,8 @@ run "azapi_settings_reach_every_resource" {
   command = apply
 
   # ignore_body_changes is write-only, so a test cannot read it back; setting it proves the slots are
-  # accepted. Which resource reads which slot is left to review.
+  # accepted. Which resource reads which slot is left to review. The interface keys of resource_types and
+  # ignore_body_changes, retry and timeouts go to az-tf-mlz-interfaces, whose tests check them.
   variables {
     lock = { kind = "CanNotDelete" }
     role_assignments = {
@@ -281,12 +247,12 @@ run "azapi_settings_reach_every_resource" {
   }
 
   assert {
-    condition     = azapi_resource.this.type == "Microsoft.Network/publicIPAddresses@2024-10-01" && azapi_resource.lock[0].type == "Microsoft.Authorization/locks@2016-09-01" && azapi_resource.role_assignments["reader"].type == "Microsoft.Authorization/roleAssignments@2020-04-01-preview"
-    error_message = "resource_types overrides should reach the address, the lock and the role assignments."
+    condition     = azapi_resource.this.type == "Microsoft.Network/publicIPAddresses@2024-10-01"
+    error_message = "The resource_types override should reach the address."
   }
   assert {
-    condition     = alltrue([for r in [azapi_resource.this, azapi_resource.lock[0], azapi_resource.role_assignments["reader"], azapi_resource.diagnostic_settings["workspace"]] : r.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && r.timeouts.create == "15m"])
-    error_message = "retry and timeouts should reach every resource."
+    condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && azapi_resource.this.timeouts.create == "15m"
+    error_message = "retry and timeouts should reach the address."
   }
 }
 

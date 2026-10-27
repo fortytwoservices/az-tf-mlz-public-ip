@@ -6,7 +6,9 @@ One public IP prefix (`Microsoft.Network/publicIPPrefixes`): a reserved, contigu
 public IP addresses, /28 to /31 for IPv4 and /124 to /127 for IPv6. Call it directly, then create the
 addresses with the root module and `public_ip_prefix_id`.
 
-Lock, role assignments and diagnostic settings are supported. Changing the tier, zones, prefix length,
+Lock, role assignments and diagnostic settings are supported, through
+[`az-tf-mlz-interfaces`](https://github.com/fortytwoservices/az-tf-mlz-interfaces) as in the root
+module. Changing the tier, zones, prefix length,
 IP version or custom IP prefix replaces the prefix; the SKU name is changed in place.
 
 <!-- markdownlint-disable MD033 -->
@@ -18,17 +20,11 @@ The following requirements are needed by this module:
 
 - <a name="requirement_azapi"></a> [azapi](#requirement\_azapi) (~> 2.12)
 
-- <a name="requirement_time"></a> [time](#requirement\_time) (~> 0.13)
-
 ## Resources
 
 The following resources are used by this module:
 
-- [azapi_resource.diagnostic_settings](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
-- [azapi_resource.lock](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
-- [azapi_resource.role_assignments](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
 - [azapi_resource.this](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
-- [time_sleep.lock_removal](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/sleep) (resource)
 
 <!-- markdownlint-disable MD013 -->
 ## Required Inputs
@@ -333,8 +329,8 @@ The following Modules are called:
 
 ### <a name="module_interfaces"></a> [interfaces](#module\_interfaces)
 
-Source: Azure/avm-utl-interfaces/azure
+Source: git::https://github.com/fortytwoservices/az-tf-mlz-interfaces.git
 
-Version: 0.9.0
+Version: v0.1.0
 
 <!-- END_TF_DOCS -->

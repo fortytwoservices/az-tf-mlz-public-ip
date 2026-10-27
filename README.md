@@ -11,11 +11,12 @@ manages a public IP prefix and is called on its own.
   `zones` for a zonal address.
 - Optional DNS label (with reuse scope), reverse FQDN, DDoS protection settings, IP tags, and an
   address taken from a prefix (`public_ip_prefix_id`).
-- Lock, role assignments and diagnostic settings, as in Azure Verified Modules. Changing the diagnostic
-  settings or role assignments of a locked address removes the lock, makes the change and locks it
-  again, because a lock blocks deleting them. To force-replace one of them (`-replace`), also replace
-  `time_sleep.lock_removal[0]` in the same run. A `ReadOnly` lock also blocks changes to the address
-  itself: set `lock = null`, apply your change, then lock it again.
+- Lock, role assignments and diagnostic settings, as in Azure Verified Modules, through
+  [`az-tf-mlz-interfaces`](https://github.com/fortytwoservices/az-tf-mlz-interfaces). Changing the
+  diagnostic settings or role assignments of a locked address removes the lock, makes the change and
+  locks it again, because a lock blocks deleting them. To force-replace one of them (`-replace`), also
+  replace `module.interfaces.time_sleep.lock_removal[0]` in the same run. A `ReadOnly` lock also blocks
+  changes to the address itself: set `lock = null`, apply your change, then lock it again.
 - Changing the SKU, zones, IP version, prefix, IP tags or DNS label scope replaces the address, because
   Azure cannot change them in place.
 
@@ -40,17 +41,11 @@ The following requirements are needed by this module:
 
 - <a name="requirement_azapi"></a> [azapi](#requirement\_azapi) (~> 2.12)
 
-- <a name="requirement_time"></a> [time](#requirement\_time) (~> 0.13)
-
 ## Resources
 
 The following resources are used by this module:
 
-- [azapi_resource.diagnostic_settings](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
-- [azapi_resource.lock](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
-- [azapi_resource.role_assignments](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
 - [azapi_resource.this](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
-- [time_sleep.lock_removal](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/sleep) (resource)
 
 <!-- markdownlint-disable MD013 -->
 ## Required Inputs
@@ -409,9 +404,9 @@ The following Modules are called:
 
 ### <a name="module_interfaces"></a> [interfaces](#module\_interfaces)
 
-Source: Azure/avm-utl-interfaces/azure
+Source: git::https://github.com/fortytwoservices/az-tf-mlz-interfaces.git
 
-Version: 0.9.0
+Version: v0.1.0
 
 ## Development
 

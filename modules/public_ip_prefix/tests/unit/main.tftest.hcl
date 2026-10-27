@@ -52,7 +52,7 @@ run "defaults" {
     error_message = "The nullable properties Azure cannot change in place should be compared as inputs."
   }
   assert {
-    condition     = length(azapi_resource.lock) + length(time_sleep.lock_removal) + length(azapi_resource.role_assignments) + length(azapi_resource.diagnostic_settings) == 0
+    condition     = module.interfaces.lock_resource_id == null && length(module.interfaces.role_assignment_resource_ids) + length(module.interfaces.diagnostic_setting_resource_ids) == 0
     error_message = "No lock, role assignment or diagnostic setting should be created by default."
   }
   assert {
@@ -104,21 +104,14 @@ run "interfaces" {
     timeouts = { create = "15m" }
   }
 
+  # Their behaviour is tested in az-tf-mlz-interfaces; a test sees only its outputs.
   assert {
-    condition     = azapi_resource.lock[0].parent_id == azapi_resource.this.id && time_sleep.lock_removal[0].triggers.public_ip_prefix_id == azapi_resource.this.id && time_sleep.lock_removal[0].triggers.children == sha256(jsonencode([var.diagnostic_settings, var.role_assignments]))
-    error_message = "The lock should be placed on the prefix, with a pause replaced with the prefix."
+    condition     = module.interfaces.lock_resource_id != null && keys(module.interfaces.role_assignment_resource_ids) == ["reader"] && keys(module.interfaces.diagnostic_setting_resource_ids) == ["workspace"]
+    error_message = "The lock, role assignments and diagnostic settings should be created through az-tf-mlz-interfaces."
   }
   assert {
-    condition     = azapi_resource.role_assignments["reader"].parent_id == azapi_resource.this.id && azapi_resource.role_assignments["reader"].body.properties.roleDefinitionId == "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
-    error_message = "Role assignments should be created on the prefix with resolved role definition IDs."
-  }
-  assert {
-    condition     = azapi_resource.diagnostic_settings["workspace"].parent_id == azapi_resource.this.id && azapi_resource.diagnostic_settings["workspace"].name == "diag-workspace"
-    error_message = "Diagnostic settings should be created on the prefix."
-  }
-  assert {
-    condition     = alltrue([for r in [azapi_resource.this, azapi_resource.lock[0], azapi_resource.role_assignments["reader"], azapi_resource.diagnostic_settings["workspace"]] : r.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && r.timeouts.create == "15m"])
-    error_message = "retry and timeouts should reach every resource."
+    condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && azapi_resource.this.timeouts.create == "15m"
+    error_message = "retry and timeouts should reach the prefix."
   }
 }
 
