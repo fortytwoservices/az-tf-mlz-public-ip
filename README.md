@@ -37,7 +37,7 @@ The examples show a prefix with addresses taken from it, and the interfaces.
 
 The following requirements are needed by this module:
 
-- <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) (>= 1.11, < 2.0)
+- <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) (>= 1.16, < 2.0)
 
 - <a name="requirement_azapi"></a> [azapi](#requirement\_azapi) (~> 2.12)
 
@@ -410,7 +410,7 @@ Version: v0.1.0
 
 ## Development
 
-Tools: Terraform 1.15.7, TFLint 0.65.0, terraform-docs 0.24.0 (the versions CI uses).
+Tools: Terraform 1.17.0, TFLint 0.65.0, terraform-docs 0.24.0 (the versions CI uses).
 
 | What | Command |
 |---|---|
