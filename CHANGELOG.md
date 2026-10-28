@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/fortytwoservices/az-tf-mlz-public-ip/compare/v0.1.1...v0.1.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* require Terraform 1.16 or later ([#5](https://github.com/fortytwoservices/az-tf-mlz-public-ip/issues/5)) ([060bcff](https://github.com/fortytwoservices/az-tf-mlz-public-ip/commit/060bcff51748f25394839935db46d5f518d5a692))
+
 ## [0.1.1](https://github.com/fortytwoservices/az-tf-mlz-public-ip/compare/v0.1.0...v0.1.1) (2026-10-27)
 
 
